@@ -1,0 +1,284 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tournoi Régional – Inscriptions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="bg-neutral-100 text-neutral-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+
+const CATEGORIES = [
+  { id: "G", label: "G" },
+  { id: "F", label: "F" },
+  { id: "E", label: "E" },
+  { id: "D", label: "D" },
+  { id: "FE11", label: "FE11" },
+  { id: "FE14", label: "FE14" },
+];
+
+const INITIAL_SLOTS = Object.fromEntries(CATEGORIES.map((c) => [c.id, 30]));
+
+function App() {
+  const [page, setPage] = React.useState("home");
+  const [eventDate] = React.useState("2026-06-21T09:00:00");
+  const [slotsLeft, setSlotsLeft] = React.useState(INITIAL_SLOTS);
+  const [selection, setSelection] = React.useState({});
+  const [deposant, setDeposant] = React.useState({ prenom: "", nom: "", email: "", telephone: "", club: "" });
+  const [teams, setTeams] = React.useState([]);
+
+  const totalTeams = React.useMemo(() => teams.length, [teams]);
+
+  const go = (next) => setPage(next);
+  const resetFlow = () => {
+    setSelection({});
+    setDeposant({ prenom: "", nom: "", email: "", telephone: "", club: "" });
+    setTeams([]);
+  };
+
+  return (
+    <div className="min-h-screen bg-neutral-100 text-neutral-900">
+      <Header onHome={() => setPage("home")} />
+      <main className="max-w-6xl mx-auto p-4 sm:p-6">
+        {page === "home" && <Home eventDate={eventDate} slotsLeft={slotsLeft} onInscrire={() => go("categories")} />}
+
+        {page === "categories" && (
+          <Categories
+            slotsLeft={slotsLeft}
+            selection={selection}
+            onChangeSelection={(catId, val) => {
+              const safe = Math.max(0, Math.min(2, Number(val || 0)));
+              setSelection((prev) => ({ ...prev, [catId]: safe }));
+            }}
+            onNext={() => {
+              const arr = [];
+              Object.entries(selection).forEach(([cat, n]) => {
+                for (let i = 1; i <= (n || 0); i++) {
+                  arr.push({ category: cat, idx: i, nomEquipe: "", prenom: "", nom: "", telephone: "", email: "" });
+                }
+              });
+              setTeams(arr);
+              go("deposant");
+            }}
+            onBack={() => go("home")}
+          />
+        )}
+
+        {page === "deposant" && (
+          <Deposant data={deposant} onChange={setDeposant} onNext={() => go("teams")} onBack={() => go("categories")} />
+        )}
+
+        {page === "teams" && (
+          <Teams
+            teams={teams}
+            onChangeTeam={(i, t) => setTeams((prev) => prev.map((x, idx) => (idx === i ? t : x)))}
+            onNext={() => go("recap")}
+            onBack={() => go("deposant")}
+          />
+        )}
+
+        {page === "recap" && (
+          <Recap
+            deposant={deposant}
+            teams={teams}
+            selection={selection}
+            slotsLeft={slotsLeft}
+            onBack={() => go("teams")}
+            onPay={() => go("paiement")}
+          />
+        )}
+
+        {page === "paiement" && (
+          <Paiement
+            totalTeams={totalTeams}
+            onBack={() => go("recap")}
+            onPaid={() => {
+              const updated = { ...slotsLeft };
+              Object.entries(selection).forEach(([cat, n]) => {
+                if (!n) return;
+                updated[cat] = Math.max(0, (updated[cat] || 0) - n);
+              });
+              setSlotsLeft(updated);
+              go("confirmation");
+            }}
+          />
+        )}
+
+        {page === "confirmation" && (
+          <Confirmation deposant={deposant} teams={teams} onNouveau={() => { resetFlow(); go("home"); }} />
+        )}
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+function Header({ onHome }) {
+  return (
+    <header className="border-b border-neutral-300 bg-white">
+      <div className="max-w-6xl mx-auto p-4 flex items-center justify-between">
+        <button onClick={onHome} className="text-lg font-semibold hover:underline">Tournoi Régional – Foot</button>
+      </div>
+    </header>
+  );
+}
+
+function Home({ eventDate, slotsLeft, onInscrire }) {
+  const totalRegistered = React.useMemo(() => {
+    const capacity = Object.values(INITIAL_SLOTS).reduce((a, b) => a + b, 0);
+    const remaining = Object.values(slotsLeft).reduce((a, b) => a + b, 0);
+    return capacity - remaining;
+  }, [slotsLeft]);
+
+  return (
+    <section>
+      <div className="bg-white rounded-lg p-6 border border-neutral-300 flex flex-col gap-4">
+        <h1 className="text-2xl font-semibold">Tournoi Régional – Inscriptions</h1>
+        <Countdown targetDate={eventDate} />
+        <div className="text-sm text-neutral-700">Équipes déjà inscrites : <strong>{totalRegistered}</strong></div>
+        <button onClick={onInscrire} className="px-4 py-2 bg-neutral-900 text-white rounded hover:opacity-90 self-start">S'inscrire</button>
+      </div>
+    </section>
+  );
+}
+
+function Countdown({ targetDate }) {
+  const [now, setNow] = React.useState(() => new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const t = new Date(targetDate).getTime() - now.getTime();
+  const days = Math.max(0, Math.floor(t / (1000 * 60 * 60 * 24)));
+  const hours = Math.max(0, Math.floor((t / (1000 * 60 * 60)) % 24));
+  const minutes = Math.max(0, Math.floor((t / (1000 * 60)) % 60));
+  const seconds = Math.max(0, Math.floor((t / 1000) % 60));
+  return (
+    <div className="grid grid-cols-4 gap-2 text-center">
+      <div>{days}j</div><div>{hours}h</div><div>{minutes}m</div><div>{seconds}s</div>
+    </div>
+  );
+}
+
+function Categories({ slotsLeft, selection, onChangeSelection, onNext, onBack }) {
+  return (
+    <section className="bg-white border border-neutral-300 rounded-lg p-4">
+      <h2 className="text-xl font-semibold mb-4">Choisir les catégories & nombre d'équipes</h2>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {CATEGORIES.map((cat) => (
+          <div key={cat.id} className="border border-neutral-300 rounded-lg p-4 flex flex-col gap-3">
+            <div className="font-medium">Catégorie {cat.label}</div>
+            <input type="number" min={0} max={2} value={selection[cat.id] || 0}
+              onChange={(e) => onChangeSelection(cat.id, e.target.value)}
+              className="border border-neutral-400 rounded p-2 w-24" />
+          </div>
+        ))}
+      </div>
+      <div className="mt-6 flex items-center justify-end gap-3">
+        <button onClick={onBack} className="px-4 py-2 border border-neutral-400 rounded">Annuler</button>
+        <button onClick={onNext} className="px-4 py-2 bg-neutral-900 text-white rounded">Continuer</button>
+      </div>
+    </section>
+  );
+}
+
+function Deposant({ data, onChange, onNext, onBack }) {
+  const set = (k, v) => onChange({ ...data, [k]: v });
+  return (
+    <section className="bg-white border border-neutral-300 rounded-lg p-4">
+      <h2 className="text-xl font-semibold mb-4">Informations du déposant</h2>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {["prenom","nom","email","telephone","club"].map((f)=>(
+          <label key={f} className="text-sm">{f}<input className="w-full border border-neutral-400 rounded p-2" value={data[f]} onChange={(e)=>set(f,e.target.value)} /></label>
+        ))}
+      </div>
+      <div className="mt-6 flex items-center justify-end gap-3">
+        <button onClick={onBack} className="px-4 py-2 border border-neutral-400 rounded">Retour</button>
+        <button onClick={onNext} className="px-4 py-2 bg-neutral-900 text-white rounded">Continuer</button>
+      </div>
+    </section>
+  );
+}
+
+function Teams({ teams, onChangeTeam, onNext, onBack }) {
+  return (
+    <section className="bg-white border border-neutral-300 rounded-lg p-4">
+      <h2 className="text-xl font-semibold mb-4">Responsables d'équipe</h2>
+      {teams.map((t, i) => (
+        <div key={i} className="border border-neutral-300 rounded p-4 mb-4">
+          <div className="text-sm mb-2">Catégorie {t.category} – Équipe {t.idx}</div>
+          <label className="text-sm">Nom de l’équipe
+            <input className="w-full border border-neutral-400 rounded p-2" value={t.nomEquipe}
+              onChange={(e)=>onChangeTeam(i,{...t,nomEquipe:e.target.value})}/>
+          </label>
+          <div className="grid sm:grid-cols-2 gap-2 mt-2">
+            {["prenom","nom","telephone","email"].map((f)=>(
+              <label key={f} className="text-sm">{f}<input className="w-full border border-neutral-400 rounded p-2"
+              value={t[f]} onChange={(e)=>onChangeTeam(i,{...t,[f]:e.target.value})}/></label>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="flex justify-end gap-3">
+        <button onClick={onBack} className="px-4 py-2 border border-neutral-400 rounded">Retour</button>
+        <button onClick={onNext} className="px-4 py-2 bg-neutral-900 text-white rounded">Récapitulatif</button>
+      </div>
+    </section>
+  );
+}
+
+function Recap({ deposant, teams, onBack, onPay }) {
+  return (
+    <section className="bg-white border border-neutral-300 rounded-lg p-4">
+      <h2 className="text-xl font-semibold mb-4">Récapitulatif</h2>
+      <div className="text-sm mb-3">Déposant : {deposant.prenom} {deposant.nom} ({deposant.club})</div>
+      {teams.map((t,i)=>(
+        <div key={i} className="text-sm border p-2 mb-2 rounded">
+          {t.category} – {t.nomEquipe} ({t.prenom} {t.nom}, {t.email})
+        </div>
+      ))}
+      <div className="flex justify-end gap-3 mt-4">
+        <button onClick={onBack} className="px-4 py-2 border border-neutral-400 rounded">Retour</button>
+        <button onClick={onPay} className="px-4 py-2 bg-neutral-900 text-white rounded">Paiement</button>
+      </div>
+    </section>
+  );
+}
+
+function Paiement({ onBack, onPaid }) {
+  return (
+    <section className="bg-white border border-neutral-300 rounded-lg p-4">
+      <h2 className="text-xl font-semibold mb-4">Paiement</h2>
+      <button onClick={onPaid} className="px-4 py-2 bg-neutral-900 text-white rounded">Simuler paiement</button>
+      <button onClick={onBack} className="ml-3 px-4 py-2 border border-neutral-400 rounded">Retour</button>
+    </section>
+  );
+}
+
+function Confirmation({ deposant, teams, onNouveau }) {
+  return (
+    <section className="bg-white border border-neutral-300 rounded-lg p-4">
+      <h2 className="text-xl font-semibold mb-4">Confirmation</h2>
+      <p>Merci {deposant.prenom}! Votre inscription de {teams.length} équipe(s) est confirmée.</p>
+      <button onClick={onNouveau} className="mt-4 px-4 py-2 bg-neutral-900 text-white rounded">Nouvelle inscription</button>
+    </section>
+  );
+}
+
+function Footer(){
+  return <footer className="text-center text-xs text-neutral-500 py-6">© {new Date().getFullYear()} Tournoi Régional</footer>;
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
+    </script>
+  </body>
+</html>
